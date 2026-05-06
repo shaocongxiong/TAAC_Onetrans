@@ -9,6 +9,15 @@ Environment variables (take precedence over CLI flags):
     TRAIN_LOG_PATH   Log directory
 """
 
+# DEBUG: Print to verify script is running
+import sys
+print("=" * 60, flush=True)
+print("DEBUG: train.py is being executed!", flush=True)
+print(f"DEBUG: Python version: {sys.version}", flush=True)
+print(f"DEBUG: Working directory: {os.getcwd()}", flush=True)
+print(f"DEBUG: Script directory: {os.path.dirname(os.path.abspath(__file__))}", flush=True)
+print("=" * 60, flush=True)
+
 import os
 import json
 import argparse
@@ -156,7 +165,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    print("DEBUG: main() function called!", flush=True)
     args = parse_args()
+    print(f"DEBUG: Parsed args: data_dir={args.data_dir}, ckpt_dir={args.ckpt_dir}", flush=True)
 
     # Create output directories.
     Path(args.ckpt_dir).mkdir(parents=True, exist_ok=True)
