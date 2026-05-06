@@ -100,6 +100,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--dropout_rate', type=float, default=0.01,
                         help='Dropout rate')
 
+    # Pyramid compression.
+    parser.add_argument('--num-pyramid-layers', type=int, default=6,
+                        help='Number of pyramid compression layers')
+    parser.add_argument('--pyramid-align', type=int, default=32,
+                        help='Pyramid schedule alignment granularity')
+
+    # Activation checkpointing.
+    parser.add_argument('--use-checkpoint', action='store_true',
+                        help='Enable activation checkpointing during training')
+
     # Loss function.
     parser.add_argument('--loss_type', type=str, default='bce', choices=['bce', 'focal'],
                         help='Loss type: bce = BCEWithLogits, focal = Focal Loss')
@@ -218,10 +228,13 @@ def main() -> None:
         "ffn_hidden": args.ffn_hidden,
         "multi_num": args.multi_num,
         "mask_type": args.mask_type,
+        "num_pyramid_layers": args.num_pyramid_layers,
+        "pyramid_align": args.pyramid_align,
         "num_time_buckets": NUM_TIME_BUCKETS if args.use_time_buckets else 0,
         "emb_skip_threshold": args.emb_skip_threshold,
         "seq_id_threshold": args.seq_id_threshold,
         "dropout_rate": args.dropout_rate,
+        "use_checkpoint": args.use_checkpoint,
     }
 
     model = OneTransPCVR(**model_args).to(args.device)
