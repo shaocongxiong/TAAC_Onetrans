@@ -461,7 +461,8 @@ class OneTransPCVR(nn.Module):
         ffn_hidden: int = 256,
         multi_num: int = 4,
         mask_type: str = "paper_causal",
-        pyramid_schedule: Optional[List[int]] = None,
+        num_pyramid_layers: int = 6,
+        pyramid_align: int = 32,
         use_checkpoint: bool = False,
         # Optional
         num_time_buckets: int = 0,
@@ -479,13 +480,12 @@ class OneTransPCVR(nn.Module):
         self.emb_skip_threshold = emb_skip_threshold
         self.seq_id_threshold = seq_id_threshold
         self.seq_domains = sorted(seq_vocab_sizes.keys())
-        self.pyramid_schedule = pyramid_schedule
 
         # Compute input dimensions
         user_int_dim = sum(length for _, _, length in user_int_feature_specs)
         item_int_dim = sum(length for _, _, length in item_int_feature_specs)
 
-        # NS tokenizer: project non-sequence features to ns_len tokens
+        # NS tokenizer
         self.ns_tokenizer = SimpleNSTokenizer(
             user_int_dim=user_int_dim,
             item_int_dim=item_int_dim,
@@ -496,9 +496,9 @@ class OneTransPCVR(nn.Module):
         )
 
         # Learnable SEP token
-        self.sep_token = nn.Parameter(torch.randn(1, 1, d_model))
+        self.sep_token = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
 
-        # Per-domain sequence tokenizers
+        # Sequence tokenizers (per-domain)
         self._seq_tokenizers = nn.ModuleDict()
         for domain in self.seq_domains:
             self._seq_tokenizers[domain] = SeqDomainTokenizer(
@@ -510,7 +510,7 @@ class OneTransPCVR(nn.Module):
                 seq_id_threshold=seq_id_threshold,
             )
 
-        # OneTrans backbone
+        # Base block (no compression)
         self.base_block = MultiOneTransBlock(
             ns_len=ns_len,
             d_model=d_model,
@@ -520,8 +520,17 @@ class OneTransPCVR(nn.Module):
             mask_type=mask_type,
             use_checkpoint=use_checkpoint,
         )
-        # Fixed-depth stack blocks (no longer compress 1-by-1 to ns_len,
-        # which would create hundreds of blocks for long TAAC sequences)
+
+        # Pyramid stack blocks (dynamic schedule)
+        total_tokens = ns_len + seq_len * len(self.seq_domains) + 1  # +1 for SEP
+        pyramid_schedule = linear_pyramid_schedule(
+            total_tokens=total_tokens,
+            ns_len=ns_len,
+            num_layers=num_pyramid_layers,
+            align_to=pyramid_align,
+        )
+        self.pyramid_schedule = pyramid_schedule
+        
         self.stack_blocks = nn.ModuleList(
             [
                 MultiOneTransBlock(
@@ -530,10 +539,11 @@ class OneTransPCVR(nn.Module):
                     num_heads=num_heads,
                     ffn_units=(ffn_hidden, d_model),
                     n=multi_num,
+                    pyramid_stack_len=target_len,
                     mask_type=mask_type,
                     use_checkpoint=use_checkpoint,
                 )
-                for _ in range(multi_num)  # Use multi_num as stack depth
+                for target_len in pyramid_schedule
             ]
         )
 
@@ -543,18 +553,18 @@ class OneTransPCVR(nn.Module):
             nn.Linear(d_model, d_model),
             nn.SiLU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(d_model, 1),  # Binary classification: single logit
+            nn.Linear(d_model, 1),
         )
 
         self.dropout = nn.Dropout(dropout_rate)
 
-        # Initialize embedding parameters
         self._init_params()
 
         logging.info(
             f"OneTransPCVR: d_model={d_model}, emb_dim={emb_dim}, "
             f"ns_len={ns_len}, seq_len={seq_len}, num_heads={num_heads}, "
             f"multi_num={multi_num}, mask_type={mask_type}, "
+            f"num_pyramid_layers={num_pyramid_layers}, pyramid_align={pyramid_align}, "
             f"seq_domains={self.seq_domains}, use_checkpoint={use_checkpoint}"
         )
 
