@@ -1,18 +1,29 @@
 #!/bin/bash
+set -x  # Show every command before executing
+exec > >(tee /tmp/train_output.log) 2>&1  # Capture all output to log
+
+echo "================================================================"
+echo "[TAIJI DEBUG] run.sh STARTED at $(date)"
+echo "[TAIJI DEBUG] PWD: $(pwd)"
+echo "[TAIJI DEBUG] SCRIPT_DIR: $(cd "$(dirname "$0")" && pwd)"
+echo "[TAIJI DEBUG] whoami: $(whoami)"
+echo "[TAIJI DEBUG] which python3: $(which python3 2>/dev/null || echo 'NOT FOUND')"
+echo "[TAIJI DEBUG] which python: $(which python 2>/dev/null || echo 'NOT FOUND')"
+echo "[TAIJI DEBUG] PYTHONPATH: ${PYTHONPATH}"
+echo "[TAIJI DEBUG] TRAIN_DATA_PATH: ${TRAIN_DATA_PATH}"
+echo "[TAIJI DEBUG] TRAIN_CKPT_PATH: ${TRAIN_CKPT_PATH}"
+echo "[TAIJI DEBUG] TRAIN_LOG_PATH: ${TRAIN_LOG_PATH}"
+echo "[TAIJI DEBUG] TRAIN_TF_EVENTS_PATH: ${TRAIN_TF_EVENTS_PATH}"
+echo "================================================================"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH}"
-
-# TAIJI Platform: Memory optimization for 19GiB GPU limit
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# Debug info (will be visible in TAIJI logs)
-echo "[TAIJI] SCRIPT_DIR: ${SCRIPT_DIR}"
-echo "[TAIJI] TRAIN_DATA_PATH: ${TRAIN_DATA_PATH}"
-echo "[TAIJI] TRAIN_CKPT_PATH: ${TRAIN_CKPT_PATH}"
-echo "[TAIJI] TRAIN_LOG_PATH: ${TRAIN_LOG_PATH}"
-echo "[TAIJI] TRAIN_TF_EVENTS_PATH: ${TRAIN_TF_EVENTS_PATH}"
+echo "[TAIJI DEBUG] Running python3..."
+echo "[TAIJI DEBUG] Command: python3 -u ${SCRIPT_DIR}/train.py"
+echo "================================================================"
 
-# Run training with unbuffered output
 python3 -u "${SCRIPT_DIR}/train.py" \
     --data_dir "${TRAIN_DATA_PATH}" \
     --ckpt_dir "${TRAIN_CKPT_PATH}" \
@@ -43,3 +54,10 @@ python3 -u "${SCRIPT_DIR}/train.py" \
     --seq_id_threshold 10000 \
     --use-checkpoint \
     --seed 42
+
+EXIT_CODE=$?
+echo "================================================================"
+echo "[TAIJI DEBUG] python3 exited with code: ${EXIT_CODE}"
+echo "================================================================"
+
+exit ${EXIT_CODE}
