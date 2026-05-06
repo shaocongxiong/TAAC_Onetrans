@@ -24,26 +24,40 @@ class ModelInput(NamedTuple):
 VALID_MASK_TYPES = {"origin", "hard_mask", "bimask_soft", "bimask_hard", "paper_causal"}
 
 
-def linear_pyramid_schedule(seq_len: int, ns_len: int) -> List[int]:
-    """Calculate pyramid compression schedule.
+def linear_pyramid_schedule(
+    total_tokens: int,
+    ns_len: int,
+    num_layers: int,
+    align_to: int = 32,
+) -> List[int]:
+    """Calculate pyramid compression schedule with alignment.
     
     Returns list of stack lengths for each compression step.
-    Each step keeps the last N tokens where N decreases linearly.
     """
-    if seq_len <= ns_len:
-        return []
-    steps = seq_len - ns_len
-    schedule = []
-    for i in range(steps):
-        # Keep last N tokens, where N decreases from seq_len-1 to ns_len
-        keep_len = seq_len - 1 - i
-        if keep_len >= ns_len:
-            schedule.append(keep_len)
+    if num_layers <= 0:
+        raise ValueError("num_layers must be positive")
+    if total_tokens < ns_len:
+        raise ValueError("total_tokens must be >= ns_len")
+    if align_to <= 0:
+        raise ValueError("align_to must be positive")
+    
+    if num_layers == 1:
+        return [ns_len]
+    
+    schedule = [total_tokens]
+    for layer_idx in range(1, num_layers - 1):
+        raw = total_tokens + (ns_len - total_tokens) * layer_idx / (num_layers - 1)
+        target_len = int(round(raw))
+        if align_to > 1 and total_tokens > align_to:
+            target_len = int(round(target_len / align_to) * align_to)
+        target_len = max(ns_len, min(schedule[-1], target_len))
+        schedule.append(target_len)
+    schedule.append(ns_len)
     return schedule
 
 
 class RMSNorm(nn.Module):
-    """Root Mean Square Layer Normalization."""
+    """Root Mean Square Layer Normalization (FP32 stable version)."""
     
     def __init__(self, dim: int, eps: float = 1e-6) -> None:
         super().__init__()
@@ -51,8 +65,10 @@ class RMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        norm = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + self.eps)
-        return self.weight * (x / norm)
+        input_dtype = x.dtype
+        x_fp32 = x.float()
+        rms = x_fp32.pow(2).mean(dim=-1, keepdim=True).add(self.eps).rsqrt()
+        return (x_fp32 * rms).to(input_dtype) * self.weight
 
 
 class FFNLayer(nn.Module):
@@ -75,7 +91,7 @@ class CausalMaskAttention(nn.Module):
         d_model: int = 128,
         num_heads: int = 4,
         if_mask: bool = True,
-        mask_type: str = "origin",
+        mask_type: str = "paper_causal",
     ) -> None:
         super().__init__()
         if d_model % num_heads != 0:
@@ -100,15 +116,16 @@ class CausalMaskAttention(nn.Module):
         return x.transpose(1, 2)
 
     def create_attention_mask(self, query_len: int, key_len: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+        if self.mask_type == "paper_causal":
+            row_idx = torch.arange(query_len, device=device).unsqueeze(1)
+            col_idx = torch.arange(key_len, device=device).unsqueeze(0)
+            q_abs = row_idx + (key_len - query_len)
+            allowed = col_idx <= q_abs
+            mask = torch.zeros(query_len, key_len, device=device, dtype=dtype)
+            return mask.masked_fill(~allowed, torch.finfo(dtype).min)
+
         row_idx = torch.arange(query_len, device=device).unsqueeze(1)
         col_idx = torch.arange(key_len, device=device).unsqueeze(0)
-        
-        if self.mask_type == "paper_causal":
-            # Paper causal: standard causal mask for all positions
-            mask = torch.zeros(query_len, key_len, device=device, dtype=dtype)
-            causal_allowed = col_idx <= row_idx
-            return mask.masked_fill(~causal_allowed, torch.finfo(dtype).min)
-        
         origin_allowed = (col_idx - row_idx) <= (self.ns_len - 1)
         if self.mask_type == "origin":
             return origin_allowed.to(dtype=dtype) + 1e-9
@@ -128,38 +145,21 @@ class CausalMaskAttention(nn.Module):
         return mask.masked_fill(~allowed, torch.finfo(dtype).min)
 
     def _cal_kqv(self, x: torch.Tensor, group_idx: int, proj_idx: int) -> torch.Tensor:
-        group = self.kqv_list[group_idx]
-        return group[proj_idx](x)
+        return self.kqv_list[group_idx][proj_idx](x)
+
+    def _project_one(self, x: torch.Tensor, proj_idx: int) -> torch.Tensor:
+        seq_len = x.size(1) - self.ns_len
+        shared_group_idx = self.ns_len
+        res = []
+        if seq_len > 0:
+            res.append(self._cal_kqv(x[:, :seq_len, :], shared_group_idx, proj_idx))
+        for i in range(self.ns_len):
+            start = seq_len + i
+            res.append(self._cal_kqv(x[:, start : start + 1, :], i, proj_idx))
+        return torch.cat(res, dim=1)
 
     def cal_mix_param_kqv(self, x: tuple) -> tuple:
-        ks = []
-        qs = []
-        vs = []
-        
-        total_len = x[0].size(1)
-        seq_len = total_len - self.ns_len - 1  # Subtract ns_tokens and sep_token
-
-        # Seq tokens first (shared group) - positions 0 to seq_len-1
-        if seq_len > 0:
-            shared_group_idx = self.ns_len
-            ks.append(self._cal_kqv(x[0][:, :seq_len, :], shared_group_idx, 0))
-            qs.append(self._cal_kqv(x[1][:, :seq_len, :], shared_group_idx, 1))
-            vs.append(self._cal_kqv(x[2][:, :seq_len, :], shared_group_idx, 2))
-
-        # SEP token (position seq_len) - use shared group as well
-        if seq_len >= 0:
-            shared_group_idx = self.ns_len
-            ks.append(self._cal_kqv(x[0][:, seq_len:seq_len+1, :], shared_group_idx, 0))
-            qs.append(self._cal_kqv(x[1][:, seq_len:seq_len+1, :], shared_group_idx, 1))
-            vs.append(self._cal_kqv(x[2][:, seq_len:seq_len+1, :], shared_group_idx, 2))
-
-        # NS tokens (independent groups) - positions seq_len+1 to end
-        for i in range(self.ns_len):
-            ks.append(self._cal_kqv(x[0][:, seq_len + 1 + i : seq_len + 2 + i, :], i, 0))
-            qs.append(self._cal_kqv(x[1][:, seq_len + 1 + i : seq_len + 2 + i, :], i, 1))
-            vs.append(self._cal_kqv(x[2][:, seq_len + 1 + i : seq_len + 2 + i, :], i, 2))
-
-        return torch.cat(ks, dim=1), torch.cat(qs, dim=1), torch.cat(vs, dim=1)
+        return self._project_one(x[0], 0), self._project_one(x[1], 1), self._project_one(x[2], 2)
 
     def forward(self, x: tuple) -> torch.Tensor:
         seq_len_k = x[0].size(1)
@@ -170,17 +170,16 @@ class CausalMaskAttention(nn.Module):
         q = self.split_heads(q)
         v = self.split_heads(v)
 
-        matmul_qk = torch.matmul(q, k.transpose(-2, -1))
-        scaled_attention_logits = matmul_qk / (self.depth ** 0.5)
-
+        attention_mask = None
         if self.if_mask:
             attention_mask = self.create_attention_mask(
-                seq_len_q, seq_len_k, device=scaled_attention_logits.device, dtype=scaled_attention_logits.dtype
+                seq_len_q, seq_len_k, device=q.device, dtype=q.dtype
             )
-            scaled_attention_logits = scaled_attention_logits + attention_mask.unsqueeze(0).unsqueeze(0)
+            attention_mask = attention_mask.unsqueeze(0).unsqueeze(0)
 
-        attention_weights = torch.softmax(scaled_attention_logits, dim=-1)
-        output = torch.matmul(attention_weights, v)
+        output = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=attention_mask, dropout_p=0.0, is_causal=False,
+        )
         output = output.transpose(1, 2).contiguous()
         output = output.view(output.size(0), -1, self.d_model)
         return self.dense(output)
@@ -194,7 +193,7 @@ class OneTransBlock(nn.Module):
         num_heads: int = 4,
         ffn_units: tuple = (256, 128),
         pyramid_stack_len: Optional[int] = None,
-        mask_type: str = "origin",
+        mask_type: str = "paper_causal",
         use_checkpoint: bool = False,
     ) -> None:
         super().__init__()
@@ -216,28 +215,19 @@ class OneTransBlock(nn.Module):
 
     def cal_mix_param_ffn(self, x: torch.Tensor) -> torch.Tensor:
         res = []
-        total_len = x.size(1)
-        seq_len = total_len - self.ns_len - 1  # Subtract ns_tokens and sep_token
-        
-        # NS tokens first (independent groups) - positions seq_len+1 to end
+        seq_len = x.size(1) - self.ns_len
+        if seq_len > 0:
+            res.append(self.ffn_list[self.ns_len](x[:, :seq_len, :]))
         for i in range(self.ns_len):
-            res.append(self.ffn_list[i](x[:, seq_len + 1 + i : seq_len + 2 + i, :]))
-        # Seq tokens + SEP token (shared group) - positions 0 to seq_len
-        if seq_len + 1 > 0:
-            res.append(self.ffn_list[self.ns_len](x[:, :seq_len + 1, :]))
+            start = seq_len + i
+            res.append(self.ffn_list[i](x[:, start : start + 1, :]))
         return torch.cat(res, dim=1)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.use_checkpoint and self.training:
-            return self._forward_checkpointed(x)
-        return self._forward_impl(x)
 
     def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
         x = self.rms_0(x)
         k_x, q_x, v_x = x, x, x
         if self.pyramid_stack_len is not None and self.pyramid_stack_len >= self.ns_len:
-            # pyramid_stack_len now keeps the LAST N tokens
-            q_x = x[:, -self.pyramid_stack_len:, :]
+            q_x = x[:, -self.pyramid_stack_len :, :]
         origin_x = q_x
 
         x = self.cma((k_x, q_x, v_x))
@@ -249,9 +239,11 @@ class OneTransBlock(nn.Module):
         x = origin_x + x
         return x
 
-    def _forward_checkpointed(self, x: torch.Tensor) -> torch.Tensor:
-        from torch.utils.checkpoint import checkpoint
-        return checkpoint(self._forward_impl, x, use_reentrant=False)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.use_checkpoint and self.training:
+            from torch.utils.checkpoint import checkpoint
+            return checkpoint(self._forward_impl, x, use_reentrant=False)
+        return self._forward_impl(x)
 
 
 class MultiOneTransBlock(nn.Module):
