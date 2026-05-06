@@ -146,8 +146,8 @@ class PCVRParquetDataset(IterableDataset):
         self._col_idx = {name: i for i, name in enumerate(schema_names)}
 
         B = batch_size
-        self._buf_user_int = np.zeros((B, self.user_int_schema.total_dim), dtype=np.int64)
-        self._buf_item_int = np.zeros((B, self.item_int_schema.total_dim), dtype=np.int64)
+        self._buf_user_int = np.zeros((B, self.user_int_schema.total_dim), dtype=np.float32)
+        self._buf_item_int = np.zeros((B, self.item_int_schema.total_dim), dtype=np.float32)
         self._buf_user_dense = np.zeros((B, self.user_dense_schema.total_dim), dtype=np.float32)
         self._buf_seq = {}
         self._buf_seq_tb = {}
@@ -435,10 +435,10 @@ class PCVRParquetDataset(IterableDataset):
         for ci, dim, offset, vs in self._item_int_plan:
             col = batch.column(ci)
             if dim == 1:
-                arr = col.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
-                arr[arr <= 0] = 0
+                raw_values = col.fill_null(0).to_pylist()
+                arr = np.array([scalar_feature(v) for v in raw_values], dtype=np.float32)
                 if vs > 0:
-                    self._record_oob('item_int', ci, arr, vs)
+                    self._record_oob('item_int', ci, arr.astype(np.int64), vs)
                 else:
                     arr[:] = 0
                 item_int[:, offset] = arr
