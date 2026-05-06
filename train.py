@@ -9,21 +9,21 @@ Environment variables (take precedence over CLI flags):
     TRAIN_LOG_PATH   Log directory
 """
 
-# DEBUG: Print to verify script is running
+import os
 import sys
+import json
+import argparse
+import logging
+from pathlib import Path
+from typing import List, Tuple
+
+# DEBUG: Print to verify script is running
 print("=" * 60, flush=True)
 print("DEBUG: train.py is being executed!", flush=True)
 print(f"DEBUG: Python version: {sys.version}", flush=True)
 print(f"DEBUG: Working directory: {os.getcwd()}", flush=True)
 print(f"DEBUG: Script directory: {os.path.dirname(os.path.abspath(__file__))}", flush=True)
 print("=" * 60, flush=True)
-
-import os
-import json
-import argparse
-import logging
-from pathlib import Path
-from typing import List, Tuple
 
 import torch
 
@@ -103,8 +103,8 @@ def parse_args() -> argparse.Namespace:
                         help='FFN hidden dimension')
     parser.add_argument('--multi_num', type=int, default=4,
                         help='Number of OneTrans blocks in each MultiOneTransBlock')
-    parser.add_argument('--mask_type', type=str, default='origin',
-                        choices=['origin', 'hard_mask', 'bimask_soft', 'bimask_hard'],
+    parser.add_argument('--mask_type', type=str, default='paper_causal',
+                        choices=['origin', 'hard_mask', 'bimask_soft', 'bimask_hard', 'paper_causal'],
                         help='Attention mask type')
     parser.add_argument('--dropout_rate', type=float, default=0.01,
                         help='Dropout rate')

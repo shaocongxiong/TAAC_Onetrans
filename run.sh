@@ -6,8 +6,6 @@ export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH}"
 echo "========================================="
 echo "SCRIPT_DIR: ${SCRIPT_DIR}"
 echo "PYTHONPATH: ${PYTHONPATH}"
-echo "Files in SCRIPT_DIR:"
-ls -la "${SCRIPT_DIR}"
 echo "TRAIN_DATA_PATH: ${TRAIN_DATA_PATH}"
 echo "TRAIN_CKPT_PATH: ${TRAIN_CKPT_PATH}"
 echo "TRAIN_LOG_PATH: ${TRAIN_LOG_PATH}"
@@ -15,9 +13,9 @@ echo "========================================="
 
 # Run training with unbuffered output
 python3 -u "${SCRIPT_DIR}/train.py" \
-    --data_dir "${TRAIN_DATA_PATH}" \
-    --ckpt_dir "${TRAIN_CKPT_PATH}" \
-    --log_dir "${TRAIN_LOG_PATH}" \
+    --data_dir "${TRAIN_DATA_PATH:-./data}" \
+    --ckpt_dir "${TRAIN_CKPT_PATH:-./checkpoints}" \
+    --log_dir "${TRAIN_LOG_PATH:-./logs}" \
     --batch_size 256 \
     --lr 1e-4 \
     --sparse_lr 0.05 \
