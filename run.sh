@@ -1,25 +1,23 @@
 #!/bin/bash
-set -e  # Exit immediately if any command fails
-
-# Switch to script directory (required for TAIJI platform)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH}"
 
+# Debug info
 echo "========================================="
-echo "Working directory: $(pwd)"
-echo "Files in directory:"
-ls -la
-echo "PYTHONPATH: $PYTHONPATH"
-echo "TRAIN_DATA_PATH: $TRAIN_DATA_PATH"
-echo "TRAIN_CKPT_PATH: $TRAIN_CKPT_PATH"
-echo "TRAIN_LOG_PATH: $TRAIN_LOG_PATH"
+echo "SCRIPT_DIR: ${SCRIPT_DIR}"
+echo "PYTHONPATH: ${PYTHONPATH}"
+echo "Files in SCRIPT_DIR:"
+ls -la "${SCRIPT_DIR}"
+echo "TRAIN_DATA_PATH: ${TRAIN_DATA_PATH}"
+echo "TRAIN_CKPT_PATH: ${TRAIN_CKPT_PATH}"
+echo "TRAIN_LOG_PATH: ${TRAIN_LOG_PATH}"
 echo "========================================="
 
-# Run training and capture all output
-python train.py \
-    --data_dir ./data \
-    --ckpt_dir ./checkpoints \
-    --log_dir ./logs \
+# Run training with unbuffered output
+python3 -u "${SCRIPT_DIR}/train.py" \
+    --data_dir "${TRAIN_DATA_PATH}" \
+    --ckpt_dir "${TRAIN_CKPT_PATH}" \
+    --log_dir "${TRAIN_LOG_PATH}" \
     --batch_size 256 \
     --lr 1e-4 \
     --sparse_lr 0.05 \
