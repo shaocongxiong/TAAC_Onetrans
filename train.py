@@ -154,6 +154,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--no_time_buckets', dest='use_time_buckets', action='store_false',
                         help='Disable time-bucket embedding')
 
+    parser.add_argument('--tf_events_dir', type=str, default=None,
+                        help='TensorBoard events directory (env: TRAIN_TF_EVENTS_PATH)')
+
     args = parser.parse_args()
 
     # Environment variables take precedence.
