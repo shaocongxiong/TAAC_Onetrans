@@ -1,5 +1,16 @@
 # Version V1
 
+## TAIJI 平台合规性
+- ✅ `run.sh` 作为唯一入口
+- ✅ 环境变量: `TRAIN_DATA_PATH`, `TRAIN_CKPT_PATH`, `TRAIN_LOG_PATH`, `TRAIN_TF_EVENTS_PATH`
+- ✅ 模型保存: `global_step` 前缀命名
+- ✅ `infer.py` 无参 `main()` 函数
+- ✅ `predictions.json` 格式正确
+- ✅ `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (19GiB 显存优化)
+- ✅ `prepare.sh` 评估阶段依赖安装
+- ✅ `batch_size=64` (适配 19GiB 显存)
+- ✅ `num_workers=4` (适配 9 核 CPU)
+
 ## 数据处理方式
 - **标量特征**: `safe_float()` → `squash_numeric()` (Log 压缩: `copysign(log1p(abs(x)), x)`)
 - **数组特征**: `summarize_array()` → 6 个统计量 `[mean, std, min, max, last, log_length]`
@@ -9,7 +20,7 @@
 ## 核心超参数
 | 参数 | 值 | 说明 |
 |---|---|---|
-| `batch_size` | 256 | 批次大小 |
+| `batch_size` | 64 | 批次大小 (适配 19GiB 显存) |
 | `d_model` | 128 | 隐藏维度 |
 | `emb_dim` | 64 | 嵌入维度 |
 | `ns_len` | 10 | 非序列 token 数量 |
@@ -27,9 +38,10 @@
 | `emb_skip_threshold` | 1000000 | 跳过 embedding 阈值 |
 | `seq_id_threshold` | 10000 | 序列 ID 阈值 |
 | `use_checkpoint` | True | 激活检查点 |
+| `num_workers` | 4 | DataLoader worker 数 (适配 9 核 CPU) |
 
 ## 架构特点
 - 使用 OneTrans_Pytorch 骨干网络 (RMSNorm FP32, SDPA 注意力)
 - 动态金字塔压缩调度 (`linear_pyramid_schedule`)
 - 双优化器策略 (Adagrad + AdamW)
-- TAIJI 平台适配 (`run.sh` 使用 `PYTHONPATH` 和绝对路径)
+- TAIJI 平台完全适配

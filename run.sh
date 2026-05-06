@@ -2,26 +2,21 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH}"
 
-# Debug info
-echo "========================================="
-echo "SCRIPT_DIR: ${SCRIPT_DIR}"
-echo "PYTHONPATH: ${PYTHONPATH}"
-echo "TRAIN_DATA_PATH: ${TRAIN_DATA_PATH}"
-echo "TRAIN_CKPT_PATH: ${TRAIN_CKPT_PATH}"
-echo "TRAIN_LOG_PATH: ${TRAIN_LOG_PATH}"
-echo "========================================="
+# TAIJI Platform: Memory optimization for 19GiB GPU limit
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # Run training with unbuffered output
 python3 -u "${SCRIPT_DIR}/train.py" \
-    --data_dir "${TRAIN_DATA_PATH:-./data}" \
-    --ckpt_dir "${TRAIN_CKPT_PATH:-./checkpoints}" \
-    --log_dir "${TRAIN_LOG_PATH:-./logs}" \
-    --batch_size 256 \
+    --data_dir "${TRAIN_DATA_PATH}" \
+    --ckpt_dir "${TRAIN_CKPT_PATH}" \
+    --log_dir "${TRAIN_LOG_PATH}" \
+    --tf_events_dir "${TRAIN_TF_EVENTS_PATH}" \
+    --batch_size 64 \
     --lr 1e-4 \
     --sparse_lr 0.05 \
     --num_epochs 999 \
     --patience 5 \
-    --num_workers 16 \
+    --num_workers 4 \
     --buffer_batches 20 \
     --valid_ratio 0.1 \
     --d_model 128 \
