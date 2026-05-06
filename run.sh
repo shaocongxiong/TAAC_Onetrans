@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Switch to script directory (required for TAIJI platform)
+cd "$(dirname "$0")"
+
 python train.py \
     --data_dir ./data \
     --ckpt_dir ./checkpoints \
@@ -14,7 +17,7 @@ python train.py \
     --valid_ratio 0.1 \
     --d_model 128 \
     --emb_dim 64 \
-    --ns_len 4 \
+    --ns_len 10 \
     --seq_len 64 \
     --num_heads 4 \
     --ffn_hidden 256 \
