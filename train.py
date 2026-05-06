@@ -19,10 +19,11 @@ from typing import List, Tuple
 
 # DEBUG: Print to verify script is running
 print("=" * 60, flush=True)
-print("DEBUG: train.py is being executed!", flush=True)
-print(f"DEBUG: Python version: {sys.version}", flush=True)
-print(f"DEBUG: Working directory: {os.getcwd()}", flush=True)
-print(f"DEBUG: Script directory: {os.path.dirname(os.path.abspath(__file__))}", flush=True)
+print("DEBUG: train.py started!", flush=True)
+print(f"DEBUG: Python: {sys.version}", flush=True)
+print(f"DEBUG: CWD: {os.getcwd()}", flush=True)
+print(f"DEBUG: TRAIN_DATA_PATH: {os.environ.get('TRAIN_DATA_PATH', 'NOT SET')}", flush=True)
+print(f"DEBUG: TRAIN_CKPT_PATH: {os.environ.get('TRAIN_CKPT_PATH', 'NOT SET')}", flush=True)
 print("=" * 60, flush=True)
 
 import torch

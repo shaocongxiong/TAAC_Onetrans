@@ -5,6 +5,13 @@ export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH}"
 # TAIJI Platform: Memory optimization for 19GiB GPU limit
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
+# Debug info (will be visible in TAIJI logs)
+echo "[TAIJI] SCRIPT_DIR: ${SCRIPT_DIR}"
+echo "[TAIJI] TRAIN_DATA_PATH: ${TRAIN_DATA_PATH}"
+echo "[TAIJI] TRAIN_CKPT_PATH: ${TRAIN_CKPT_PATH}"
+echo "[TAIJI] TRAIN_LOG_PATH: ${TRAIN_LOG_PATH}"
+echo "[TAIJI] TRAIN_TF_EVENTS_PATH: ${TRAIN_TF_EVENTS_PATH}"
+
 # Run training with unbuffered output
 python3 -u "${SCRIPT_DIR}/train.py" \
     --data_dir "${TRAIN_DATA_PATH}" \
