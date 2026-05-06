@@ -1,0 +1,8 @@
+{
+  "_purpose": "NS-groups configuration for OneTrans. Each feature is placed in its own singleton group by default.",
+  "_format": "Top-level keys: 'user_ns_groups' and 'item_ns_groups', each mapping a group name to a list of feature ids.",
+  "_usage": "OneTrans uses a SimpleNSTokenizer that projects all non-sequence features together. This file is kept for compatibility with the official platform but is not actively used by the model.",
+
+  "user_ns_groups": {},
+  "item_ns_groups": {}
+}
