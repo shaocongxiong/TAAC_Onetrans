@@ -18,6 +18,8 @@ import torch.multiprocessing
 from torch.utils.data import IterableDataset, DataLoader
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+from feature_engineering import scalar_feature, summarize_array, sanitize_sequence
+
 try:
     import numpy.typing as npt  # noqa: F401
 except ImportError:  # pragma: no cover
@@ -413,8 +415,8 @@ class PCVRParquetDataset(IterableDataset):
         for ci, dim, offset, vs in self._user_int_plan:
             col = batch.column(ci)
             if dim == 1:
-                arr = col.fill_null(0).to_numpy(zero_copy_only=False).astype(np.int64)
-                arr[arr <= 0] = 0
+                raw_values = col.fill_null(0).to_pylist()
+                arr = np.array([scalar_feature(v) for v in raw_values], dtype=np.float32)
                 if vs > 0:
                     self._record_oob('user_int', ci, arr, vs)
                 else:
@@ -453,7 +455,9 @@ class PCVRParquetDataset(IterableDataset):
         for ci, dim, offset in self._user_dense_plan:
             col = batch.column(ci)
             padded = self._pad_varlen_float_column(col, dim, B)
-            user_dense[:, offset:offset + dim] = padded
+            for i in range(B):
+                stats = summarize_array(padded[i].tolist())
+                user_dense[i, offset:offset + len(stats)] = stats
 
         result = {
             'user_int_feats': torch.from_numpy(user_int.copy()),
