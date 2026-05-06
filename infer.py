@@ -39,6 +39,8 @@ _FALLBACK_MODEL_CFG = {
     'ffn_hidden': 256,
     'multi_num': 4,
     'mask_type': 'paper_causal',
+    'num_pyramid_layers': 6,
+    'pyramid_align': 32,
     'dropout_rate': 0.01,
     'num_time_buckets': NUM_TIME_BUCKETS,
     'emb_skip_threshold': 1000000,
