@@ -1,8 +1,21 @@
 #!/bin/bash
+set -e  # Exit immediately if any command fails
 
 # Switch to script directory (required for TAIJI platform)
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
+echo "========================================="
+echo "Working directory: $(pwd)"
+echo "Files in directory:"
+ls -la
+echo "PYTHONPATH: $PYTHONPATH"
+echo "TRAIN_DATA_PATH: $TRAIN_DATA_PATH"
+echo "TRAIN_CKPT_PATH: $TRAIN_CKPT_PATH"
+echo "TRAIN_LOG_PATH: $TRAIN_LOG_PATH"
+echo "========================================="
+
+# Run training and capture all output
 python train.py \
     --data_dir ./data \
     --ckpt_dir ./checkpoints \
